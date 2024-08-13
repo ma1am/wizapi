@@ -237,7 +237,7 @@ class Config:
             raise ValueError(f"Missing Wiz configuration keys: {', '.join(missing)}")
 
     def _options(self, **kwargs):
-        return {k: v for k, v in kwargs.items() if k in CONFIG_KEYS}
+        return {k: v for k, v in kwargs.items() if k in CONFIG_KEYS and v}
 
     def _create_config(self, options: dict[str, str]):
         """Loads config from ENV, Json File, INI config file and the options.
@@ -245,11 +245,9 @@ class Config:
         Returns the config in the prefence of options, env, json & ini
 
         """
-        envconf = {k.split("WIZ_")[-1].lower(): v for k, v in self._env().items() if k}
-        iniconf = self._iniconfig(
-            Path(DEFAULT_WIZ_DIR / "config"), DEFAULT_CONFIG_PROFILE
-        )
-        jsonconf = self._jsonconfig(Path(DEFAULT_WIZ_DIR / "config.json"))
+        envconf = {k.split("WIZ_")[-1].lower(): v for k, v in self._env().items()}
+        iniconf = self._iniconfig(DEFAULT_WIZ_DIR / "config", DEFAULT_CONFIG_PROFILE)
+        jsonconf = self._jsonconfig(DEFAULT_WIZ_DIR / "config.json")
         return {**iniconf, **jsonconf, **envconf, **options}
 
     def _env(self):
@@ -406,7 +404,7 @@ class Wiz(OAuthAccessToken):
         result = self._post_with_session().json()
         return result
 
-    def query_all(self, variables: dict, graph_query: str):
+    def query_all(self, graph_query: str, variables: dict):
         """
         This method implements pagination to fetch data from Wiz GraphQL endpoint.
 
@@ -425,7 +423,10 @@ class Wiz(OAuthAccessToken):
 
         yield result
 
-        self._data_key = list(result["data"])[0]
+        try:
+            self._data_key = list(result["data"])[0]
+        except IndexError as e:
+            raise WizError("No data key found in the response to paginate") from e
         self._set_pagination(result)
 
         if self._has_next_page:
@@ -459,6 +460,7 @@ class Wiz(OAuthAccessToken):
         if response.status_code == 401:
             self._set_access_token(True)
             response = self._session.post(
-                self.api_url, timeout=self._timeout, json=self._data, **kwargs
+                self.api_url, timeout=self.timeout, json=self._data, **kwargs
             )
+
         return response
