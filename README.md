@@ -1,4 +1,4 @@
-# WIZAPI Python Module
+# WIZAPI
 This module provides a Python interface for making API calls to the Wiz.
 
 ## Installation
