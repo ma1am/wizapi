@@ -7,11 +7,10 @@ import logging
 import hashlib
 import configparser
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Generator
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import requests
-from requests import Response
 
 logger = logging.getLogger("wizapi")
 logger.setLevel(logging.DEBUG)
@@ -47,7 +46,7 @@ class WizError(Exception):
         status_code: Optional[int] = None,
         url: Optional[str] = None,
         json_data: Optional[dict] = None,
-        raw: Optional[str] = None,
+        raw: Optional[Any] = None,
     ) -> None:
         self.msg = msg or ""
         self.status_code = status_code or 0
@@ -225,13 +224,6 @@ class Config:
         self.auth_url: str = config.get("auth_url", "")
         self.timeout: int = config.get("timeout", DEFAULT_TIMEOUT)
 
-    def __getattr__(self, name: str) -> Any:
-        if name in self._config:
-            return self._config[name]
-        raise AttributeError(
-            f"'{self.__class__.__name__}' object has no attribute '{name}'"
-        )
-
     def _validate_config(self, conf):
         if missing := CONFIG_KEYS - set(list(conf)):
             raise ValueError(f"Missing Wiz configuration keys: {', '.join(missing)}")
@@ -359,7 +351,7 @@ class OAuthAccessToken(Config):
         return token_data
 
     @http_error_handler()
-    def _make_request(self, url: str, **kwargs) -> Response:
+    def _make_request(self, url: str, **kwargs) -> requests.Response:
         """Make an HTTP request and returns `Response`"""
         return requests.post(url, timeout=self.timeout, **kwargs)
 
@@ -381,13 +373,13 @@ class Wiz(OAuthAccessToken):
 
         self._session = requests.Session()
         self._session.headers.update({"Content-Type": "application/json"})
-        self._set_access_token()
+        self._set_auth_header()
         self._data = {}
         self._has_next_page = False
         self._end_cursor = None
         self._data_key = ""
 
-    def query(self, graph_query: str, variables: dict):
+    def query(self, graph_query: str, variables: dict) -> dict[str, Any]:
         """
         General purpose query() method for Wiz GraphQL endpoint.
 
@@ -404,7 +396,9 @@ class Wiz(OAuthAccessToken):
         result = self._post_with_session().json()
         return result
 
-    def query_all(self, graph_query: str, variables: dict):
+    def query_all(
+        self, graph_query: str, variables: dict
+    ) -> Generator[dict[str, Any], Any, None]:
         """
         This method implements pagination to fetch data from Wiz GraphQL endpoint.
 
@@ -415,6 +409,12 @@ class Wiz(OAuthAccessToken):
         Returns:
             Generator[dict]: The raw data returned by the Wiz API.
 
+        Raises:
+            WizError: If no data key is found in the response.
+
+        Usage:
+            >>> for data in wiz.query_all(query, variables):
+            >>>    print(data)
         Reference: https://docs.wiz.io/wiz-docs/docs/using-the-wiz-api#communicating-with-graphql
         """
 
@@ -446,19 +446,19 @@ class Wiz(OAuthAccessToken):
         self._has_next_page = page_info.get("hasNextPage", False)
         self._end_cursor = page_info.get("endCursor", None)
 
-    def _set_access_token(self, force: bool = False) -> None:
+    def _set_auth_header(self, force: bool = False) -> None:
         """Update the access token."""
         self._retrieve_accesstoken(force)
         self._session.headers.update({"Authorization": f"Bearer {self._access_token}"})
 
     @http_error_handler()
-    def _post_with_session(self, **kwargs) -> Response:
+    def _post_with_session(self, **kwargs) -> requests.Response:
         """Make an HTTP request and returns json data"""
         response = self._session.post(
             self.api_url, timeout=self.timeout, json=self._data, **kwargs
         )
         if response.status_code == 401:
-            self._set_access_token(True)
+            self._set_auth_header(True)
             response = self._session.post(
                 self.api_url, timeout=self.timeout, json=self._data, **kwargs
             )
