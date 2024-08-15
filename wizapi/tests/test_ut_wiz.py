@@ -6,8 +6,8 @@ import unittest
 import logging
 from pathlib import Path
 from unittest.mock import patch, MagicMock, mock_open
-from ..wiz import WIZ as API, Config, AccessToken
-from .. import wiz
+from wizapi import WIZ, WizError
+from wizapi import wiz
 
 
 class TestWizBase(unittest.TestCase):
@@ -30,7 +30,7 @@ class TestWizBase(unittest.TestCase):
 
 class TestWiz2(TestWizBase):
     def setUp(self):
-        self.api = API(
+        self.api = WIZ(
             client_id="test_client_id",
             client_secret="test_client_secret",
             api_url="https://wiz.io/graphql",
@@ -49,7 +49,7 @@ class TestWiz2(TestWizBase):
         assert self.api._session.headers["Content-Type"] == "application/json"
 
     def test_set_auth_header(self):
-        with patch("wiz.requests.post") as mock_post:
+        with patch("wizapi.wiz.requests.post") as mock_post:
             mock_response = MagicMock()
             mock_response.json.return_value = {"access_token": "test_access_token"}
             mock_post.return_value = mock_response
@@ -59,7 +59,7 @@ class TestWiz2(TestWizBase):
             )
 
     def test_set_auth_header_force(self):
-        with patch("wiz.requests.post") as mock_post:
+        with patch("wizapi.wiz.requests.post") as mock_post:
             mock_response = MagicMock()
             mock_response.json.return_value = {"access_token": "new_test_access_token"}
             mock_post.return_value = mock_response
@@ -73,10 +73,10 @@ class TestWiz2(TestWizBase):
 class TestConfig(TestWizBase):
 
     @patch.object(
-        Config, "_jsonconfig", return_value={"api_url": "https://jsonurl.com"}
+        wiz.Config, "_jsonconfig", return_value={"api_url": "https://jsonurl.com"}
     )
     @patch.object(
-        Config,
+        wiz.Config,
         "_iniconfig",
         return_value={
             "api_url": "https://iniurl.com",
@@ -87,7 +87,7 @@ class TestConfig(TestWizBase):
         },
     )
     @patch.object(
-        Config,
+        wiz.Config,
         "_env",
         return_value={
             "api_url": "https://envurl.com",
@@ -99,7 +99,7 @@ class TestConfig(TestWizBase):
     )
     def test_load_order(self, mock_env, mock_ini, mock_json):
         """Test that options take precedence over env, JSON, and INI."""
-        config = Config(
+        config = wiz.Config(
             options={
                 "api_url": "https://optionurl.com",
                 "auth_url": "https://optauth.com",
@@ -111,7 +111,7 @@ class TestConfig(TestWizBase):
         self.assertEqual(config["api_url"], "https://optionurl.com")
 
     @patch.object(
-        Config,
+        wiz.Config,
         "_jsonconfig",
         return_value={
             "api_url": "https://jsonurl.com",
@@ -122,7 +122,7 @@ class TestConfig(TestWizBase):
         },
     )
     @patch.object(
-        Config,
+        wiz.Config,
         "_iniconfig",
         return_value={
             "api_url": "https://iniurl.com",
@@ -132,15 +132,15 @@ class TestConfig(TestWizBase):
             "timeout": 60,
         },
     )
-    @patch.object(Config, "_env", return_value={})
+    @patch.object(wiz.Config, "_env", return_value={})
     def test_json_over_ini(self, mock_env, mock_ini, mock_json):
         """Test that JSON config takes precedence over INI when ENV and options are not provided."""
-        config = Config()
+        config = wiz.Config()
         self.assertEqual(config["api_url"], "https://jsonurl.com")
 
-    @patch.object(Config, "_jsonconfig", return_value={})
+    @patch.object(wiz.Config, "_jsonconfig", return_value={})
     @patch.object(
-        Config,
+        wiz.Config,
         "_iniconfig",
         return_value={
             "api_url": "https://iniurl.com",
@@ -150,16 +150,16 @@ class TestConfig(TestWizBase):
             "timeout": 60,
         },
     )
-    @patch.object(Config, "_env", return_value={})
+    @patch.object(wiz.Config, "_env", return_value={})
     def test_ini_when_no_json(self, mock_env, mock_ini, mock_json):
         """Test that INI config is used when JSON and ENV are not provided."""
-        config = Config()
+        config = wiz.Config()
         self.assertEqual(config["api_url"], "https://iniurl.com")
 
-    @patch.object(Config, "_jsonconfig", return_value={})
-    @patch.object(Config, "_iniconfig", return_value={})
+    @patch.object(wiz.Config, "_jsonconfig", return_value={})
+    @patch.object(wiz.Config, "_iniconfig", return_value={})
     @patch.object(
-        Config,
+        wiz.Config,
         "_env",
         return_value={
             "api_url": "https://envurl.com",
@@ -171,11 +171,11 @@ class TestConfig(TestWizBase):
     )
     def test_env_when_no_ini_json(self, mock_env, mock_ini, mock_json):
         """Test that ENV config is used when JSON and INI are not provided."""
-        config = Config()
+        config = wiz.Config()
         self.assertEqual(config["api_url"], "https://envurl.com")
 
     @patch.object(
-        Config,
+        wiz.Config,
         "_jsonconfig",
         return_value={
             "api_url": "https://jsonurl.com",
@@ -186,7 +186,7 @@ class TestConfig(TestWizBase):
         },
     )
     @patch.object(
-        Config,
+        wiz.Config,
         "_iniconfig",
         return_value={
             "api_url": "https://iniurl.com",
@@ -197,7 +197,7 @@ class TestConfig(TestWizBase):
         },
     )
     @patch.object(
-        Config,
+        wiz.Config,
         "_env",
         return_value={
             "api_url": "https://envurl.com",
@@ -209,24 +209,24 @@ class TestConfig(TestWizBase):
     )
     def test_combined_sources(self, mock_env, mock_ini, mock_json):
         """Test that configuration is combined from all sources correctly."""
-        config = Config()
+        config = wiz.Config()
         self.assertEqual(config["client_id"], "envclientid")
         self.assertEqual(config["client_secret"], "envclientsecret")
         self.assertEqual(config["api_url"], "https://envurl.com")
 
-    @patch.object(Config, "_jsonconfig", return_value={})
-    @patch.object(Config, "_iniconfig", return_value={})
-    @patch.object(Config, "_env", return_value={})
+    @patch.object(wiz.Config, "_jsonconfig", return_value={})
+    @patch.object(wiz.Config, "_iniconfig", return_value={})
+    @patch.object(wiz.Config, "_env", return_value={})
     def test_missing_keys(self, mock_env, mock_ini, mock_json):
         """Test that an error is raised if required keys are missing."""
         with self.assertRaises(ValueError) as cm:
-            Config(options={})
+            wiz.Config(options={})
         self.assertIn("Missing Wiz configuration keys", str(cm.exception))
 
 
 class TestIniConfig(TestWizBase):
     def setUp(self):
-        self.config = Config()
+        self.config = wiz.Config()
         self.path = Path("/path/to/config.ini")
         self.profile = "default"
 
@@ -255,7 +255,7 @@ class TestIniConfig(TestWizBase):
         self.assertEqual(config, {})
 
 
-class TestAccessToken(TestWizBase):
+class TestwizAccessToken(TestWizBase):
     @classmethod
     def setUpClass(cls):
         # Configure logging to display logs while running tests
@@ -266,14 +266,14 @@ class TestAccessToken(TestWizBase):
         cls.logger = logging.getLogger("wizapi")
 
     def setUp(self):
-        self.access_token_unstored = AccessToken(
+        self.access_token_unstored = wiz.AccessToken(
             "test_client_id",
             "test_client_secret",
             "https://wiz.io/token",
             timeout=30,
             stored=True,
         )
-        self.access_token_stored = AccessToken(
+        self.access_token_stored = wiz.AccessToken(
             "test_client_id",
             "test_client_secret",
             "https://wiz.io/token",
@@ -282,34 +282,36 @@ class TestAccessToken(TestWizBase):
         )
 
     @patch.object(
-        AccessToken, "load_token", return_value={"access_token": "test_access_token"}
+        wiz.AccessToken,
+        "load_token",
+        return_value={"access_token": "test_access_token"},
     )
     def test_access_token_from_storage_format_error(self, mock_load_token):
 
-        at = AccessToken(
+        at = wiz.AccessToken(
             "test_client_id",
             "test_client_secret",
             "https://wiz.io/token",
             timeout=30,
             stored=True,
         )
-        with self.assertRaises(wiz.WizError) as cm:
+        with self.assertRaises(WizError) as cm:
             at._load_token_from_storage()
         self.assertIn(
             "Invalid access token format. Expected a JWT token", str(cm.exception)
         )
 
-    @patch.object(AccessToken, "load_token", return_value={"access_token": ""})
+    @patch.object(wiz.AccessToken, "load_token", return_value={"access_token": ""})
     def test_access_token_from_storage_valid_format(self, mock_load_token):
 
-        at = AccessToken(
+        at = wiz.AccessToken(
             "test_client_id",
             "test_client_secret",
             "https://wiz.io/token",
             timeout=30,
             stored=True,
         )
-        with self.assertRaises(wiz.WizError) as cm:
+        with self.assertRaises(WizError) as cm:
             at._load_token_from_storage()
         self.assertIn(
             "Invalid access token format. Expected a JWT token", str(cm.exception)
@@ -317,13 +319,13 @@ class TestAccessToken(TestWizBase):
 
     def test_access_token_from_storage_stored_false(self):
 
-        at = AccessToken(
+        at = wiz.AccessToken(
             "test_client_id",
             "test_client_secret",
             "https://wiz.io/token",
             timeout=30,
         )
-        with self.assertRaises(wiz.WizError) as cm:
+        with self.assertRaises(WizError) as cm:
             at._load_token_from_storage()
         self.assertIn(
             "Cannot load access token from storage as stored parameter is set to False",
@@ -331,7 +333,7 @@ class TestAccessToken(TestWizBase):
         )
 
     def test_fetch_token(self):
-        with patch("wiz.requests.post") as mock_post:
+        with patch("wizapi.wiz.requests.post") as mock_post:
             mock_response = MagicMock()
             mock_response.json.return_value = {"access_token": "test_access_token"}
             mock_post.return_value = mock_response
