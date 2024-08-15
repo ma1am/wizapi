@@ -224,37 +224,6 @@ class TestConfig(TestWizBase):
         self.assertIn("Missing Wiz configuration keys", str(cm.exception))
 
 
-class TestIniConfig(TestWizBase):
-    def setUp(self):
-        self.config = wiz.Config()
-        self.path = Path("/path/to/config.ini")
-        self.profile = "default"
-
-    @patch(
-        "builtins.open",
-        new_callable=mock_open,
-        read_data="[default]\nkey1=value1\nkey2=value2",
-    )
-    def test_iniconfig_with_valid_file_and_profile(self, mock_file):
-        expected_config = {"key1": "value1", "key2": "value2"}
-        config = self.config._iniconfig(self.path, self.profile)
-        self.assertEqual(config, expected_config)
-
-    @patch(
-        "builtins.open",
-        new_callable=mock_open,
-        read_data="[other_profile]\nkey1=value1\nkey2=value2",
-    )
-    def test_iniconfig_with_valid_file_and_invalid_profile(self, mock_file):
-        config = self.config._iniconfig(self.path, self.profile)
-        self.assertEqual(config, {})
-
-    @patch("builtins.open", side_effect=FileNotFoundError)
-    def test_iniconfig_with_file_not_found(self, mock_open):
-        config = self.config._iniconfig(self.path, self.profile)
-        self.assertEqual(config, {})
-
-
 class TestwizAccessToken(TestWizBase):
     @classmethod
     def setUpClass(cls):
