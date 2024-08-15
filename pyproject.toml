@@ -20,3 +20,14 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "--strict-markers"
+testpaths = ["tests"]
+
+[tool.tox]
+envlist = ["py39","py310","py311","py312"]
+
+[test.envs]
+default = "unittest"

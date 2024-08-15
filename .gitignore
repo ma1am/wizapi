@@ -71,6 +71,3 @@ docs/_build
 # Vscode
 .vscode
 
-#Test Python Files
-
-test*.py
