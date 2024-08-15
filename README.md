@@ -8,14 +8,14 @@ pip install git+https://github.com/ma1am/wizapi.git
 ```
 
 ## Usage
-Class: Wiz
+Class: WIZ
 The Wiz class is designed to interact with the Wiz API. It manages authentication via OAuth2 and supports making requests to the API.
 
 ```python
-from wizapi import Wiz
+from wizapi import WIZ
 
 # Initialize the API client
-w = Wiz(
+w = WIZ(
     client_id="your_client_id",
     client_secret="your_client_secret",
     api_url="https://api.myapp.com",
