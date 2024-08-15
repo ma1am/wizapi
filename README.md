@@ -4,7 +4,7 @@ This module provides a Python interface for making API calls to the Wiz.
 ## Installation
 
 ```bash
-pip install git+https://github.com/ma1am/wizapi.git
+pip install wizapi
 ```
 
 ## Usage
@@ -48,5 +48,5 @@ w=Wiz(stored=True)
 
 
 ## Methods
-- `query()` : non-paginated result
-- `query_all()`: paginated query result# wizapi
+- `query()` : non-paginated query result (dict)
+- `query_all()`: paginated query result (dict)
