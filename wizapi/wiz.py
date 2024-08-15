@@ -1,13 +1,14 @@
 """Wiz Api"""
 
 import os
+import re
 import json
 import base64
 import logging
 import hashlib
 import configparser
 from pathlib import Path
-from typing import Any, Optional, Generator
+from typing import Any, Optional, Generator, Union
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import requests
@@ -16,7 +17,7 @@ logger = logging.getLogger("wizapi")
 logger.setLevel(logging.DEBUG)
 
 DEFAULT_WIZ_DIR = Path.home() / ".wiz"
-DEFAULT_TIMEOUT = 300
+DEFAULT_TIMEOUT = 120
 DEFAULT_CONFIG_PROFILE = "default"
 CONFIG_KEYS = {"client_id", "client_secret", "api_url", "auth_url", "timeout"}
 
@@ -94,7 +95,7 @@ class RaiseWizError:
                 )
 
         except json.decoder.JSONDecodeError as e:
-            msg = f" {self.response.status_code} {self.response.reason} {self.response.text} "
+            msg = f"{self.response.status_code} {self.response.text}"
 
             try:
                 self.response.raise_for_status()
@@ -127,79 +128,19 @@ def http_error_handler():
                 raise WizError(str(e)) from e
 
             RaiseWizError(response)
-            return response
+            return response.json()
 
         return wrapper
 
     return decorator
 
 
-class TokenStorage:
-    """Handles token storage and retrieval."""
-
-    def __init__(self, client_id: str) -> None:
-        self._path = self._get_credential_path(client_id)
-
-    def save_token(self, token_data: dict[str, Any]) -> None:
-        """Save token data to a file."""
-        try:
-            self._write_to_file(token_data)
-            logger.debug("Token saved to %s", self._path)
-        except (FileNotFoundError, PermissionError) as e:
-            logger.debug("Error while saving token: %s", e)
-            self._handle_save_error(token_data)
-
-    def load_token(self) -> dict[str, Any]:
-        """Load token data from a file if it exists."""
-        try:
-            with open(self._path, "r", encoding="utf-8") as file:
-                return json.load(file)
-        except FileNotFoundError:
-            logger.debug("Token file not found: %s", self._path)
-        except json.JSONDecodeError:
-            logger.debug("Invalid JSON in the token file: %s", self._path)
-        return {}
-
-    def _write_to_file(self, token_data: dict[str, Any]) -> None:
-        """Helper method to write token data to a file."""
-        with open(self._path, "w", encoding="utf-8") as file:
-            json.dump(token_data, file, indent=4, default=self._format_datetime)
-
-    def _handle_save_error(self, token_data: dict[str, Any]) -> None:
-        """Handle errors encountered during saving."""
-        try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            self._write_to_file(token_data)
-        except PermissionError:
-            logger.debug("Permission error while saving token to %s", self._path)
-
-    @staticmethod
-    def _format_datetime(o: Any) -> str:
-        """Convert datetime objects to string."""
-        if isinstance(o, datetime):
-            return o.isoformat()
-        return str(o)
-
-    def _get_credential_path(self, client_id: str) -> Path:
-        """Generate and return the path for the credentials file."""
-        return (
-            DEFAULT_WIZ_DIR
-            / "credentials"
-            / f"credentials_{self._hash_client_id(client_id)}.json"
-        )
-
-    @staticmethod
-    def _hash_client_id(client_id: str) -> str:
-        """Return the MD5 hash of the client ID."""
-        return hashlib.md5(client_id.encode("utf-8")).hexdigest()
-
-
-class Config:
+class Config(dict):
     """
     Configuration class for loading and managing API configuration settings.
     """
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, options: Optional[dict[str, Any]] = None) -> None:
         """
         Configuration class for loading and managing API configuration settings.
 
@@ -216,13 +157,13 @@ class Config:
                 - auth_url (Optional[str]): The authentication URL.
                 - timeout (Optional[int]): The timeout value for API requests.
         """
-        config = self._create_config(self._options(**kwargs))
+        _options = options or {}
+        config = self._create_config(self._options(**_options))
         self._validate_config(config)
-        self.client_id: str = config.get("client_id", "")
-        self.client_secret: str = config.get("client_secret", "")
-        self.api_url: str = config.get("api_url", "")
-        self.auth_url: str = config.get("auth_url", "")
-        self.timeout: int = config.get("timeout", DEFAULT_TIMEOUT)
+        super().__init__(**config)
+
+    def __getattr__(self, name: str) -> Any:
+        return self.get(name, None)
 
     def _validate_config(self, conf):
         if missing := CONFIG_KEYS - set(list(conf)):
@@ -235,7 +176,6 @@ class Config:
         """Loads config from ENV, Json File, INI config file and the options.
 
         Returns the config in the prefence of options, env, json & ini
-
         """
         envconf = {k.split("WIZ_")[-1].lower(): v for k, v in self._env().items()}
         iniconf = self._iniconfig(DEFAULT_WIZ_DIR / "config", DEFAULT_CONFIG_PROFILE)
@@ -266,58 +206,106 @@ class Config:
             return {}
 
 
-class OAuthAccessToken(Config):
+class TokenStorage:
+    """Handles token storage and retrieval."""
+
+    def __init__(self, client_id: str, wiz_dir: Optional[Union[Path, str]]) -> None:
+        self._path = self._get_credential_path(wiz_dir, client_id)
+
+    def save_token(self, token_data: dict[str, Any]) -> None:
+        """Save token data to a file."""
+        if not self._path:
+            return
+        try:
+            self._write_to_file(self._path, token_data)
+            logger.debug("Token saved to %s", self._path)
+        except (FileNotFoundError, PermissionError) as e:
+            logger.debug("Error while saving token: %s", e)
+            self._handle_save_error(self._path, token_data)
+
+    def load_token(self) -> dict[str, Any]:
+        """Load token data from a file if it exists."""
+        if not self._path:
+            return {}
+        try:
+            with open(self._path, "r", encoding="utf-8") as file:
+                return json.load(file)
+        except FileNotFoundError:
+            logger.debug("Token file not found: %s", self._path)
+        except json.JSONDecodeError:
+            logger.debug("Invalid JSON in the token file: %s", self._path)
+        return {}
+
+    def _write_to_file(self, path: Path, token_data: dict[str, Any]) -> None:
+        """Helper method to write token data to a file."""
+        with open(path, "w", encoding="utf-8") as file:
+            json.dump(token_data, file, indent=4, default=self._format_datetime)
+
+    def _handle_save_error(self, path: Path, token_data: dict[str, Any]) -> None:
+        """Handle errors encountered during saving."""
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            self._write_to_file(path, token_data)
+        except PermissionError:
+            logger.debug("Permission error while saving token to %s", path)
+
+    @staticmethod
+    def _format_datetime(o: Any) -> str:
+        """Convert datetime objects to string."""
+        if isinstance(o, datetime):
+            return o.isoformat()
+        return str(o)
+
+    def _get_credential_path(self, wiz_dir, client_id: str) -> Optional[Path]:
+        """Generate and return the path for the credentials file."""
+        wiz_dir = Path(wiz_dir) if wiz_dir else None
+        if not wiz_dir or not wiz_dir.exists():
+            logger.debug("Invalid Wiz directory provided: %s", wiz_dir)
+            return None
+
+        return (
+            wiz_dir
+            / "credentials"
+            / f"credentials_{self._hash_client_id(client_id)}.json"
+        )
+
+    @staticmethod
+    def _hash_client_id(client_id: str) -> str:
+        """Return the MD5 hash of the client ID."""
+        return hashlib.md5(client_id.encode("utf-8")).hexdigest()
+
+
+class AccessToken(TokenStorage):
     """Manages OAuth access token retrieval and storage."""
 
     def __init__(
         self,
-        client_id: Optional[str] = None,
-        client_secret: Optional[str] = None,
-        api_url: Optional[str] = None,
-        auth_url: Optional[str] = None,
-        timeout: int = 60,
+        client_id: str,
+        client_secret: str,
+        auth_url: str,
+        timeout: int,
         stored: bool = False,
     ) -> None:
-        super().__init__(
-            client_id=client_id,
-            client_secret=client_secret,
-            api_url=api_url,
-            auth_url=auth_url,
-            timeout=timeout,
-        )
+        super().__init__(client_id, DEFAULT_WIZ_DIR)
+
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.auth_url = auth_url
+        self.timeout = timeout
         self._stored = stored
-        self._access_token = ""
-        self._token_data = {}
-        self._storage = TokenStorage(self.client_id) if self._stored else None
 
-    def _retrieve_accesstoken(self, force: bool = False):
+    def retrieve_accesstoken(self):
         """Load a valid access token, either from storage or by requesting a new one."""
+        if self._stored and self._path:
+            try:
+                return self._load_token_from_storage()
+            except WizError as e:
+                logger.debug("Could not load a valid access token from storage: %s", e)
 
-        if force:
-            self._access_token = self._fetch_token_and_store()
-
-        else:
-            if self._stored and self._storage:
-                self._access_token = self._load_token_from_storage()
-
-        if not self._access_token:
-            self._access_token = self._fetch_token_and_store()
-
-    def _load_token_from_storage(self) -> Optional[str]:
-        """Attempt to load and validate the access token from storage."""
-        if self._storage:
-            access_token = self._storage.load_token().get("access_token", "")
-            return access_token if self._is_valid(access_token) else None
+        return self._fetch_token_and_store()
 
     def _fetch_token_and_store(self) -> str:
         """Request a new access token and _save it to storage."""
-        token_data = self._request_access_token()
-        if self._storage:
-            self._storage.save_token(token_data)
-        return token_data["access_token"]
-
-    def _request_access_token(self) -> dict[str, Any]:
-        """Request a new access token from the auth server."""
 
         payload = {
             "grant_type": "client_credentials",
@@ -327,36 +315,59 @@ class OAuthAccessToken(Config):
         }
 
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
-        return self._make_request(self.auth_url, data=payload, headers=headers).json()
+        token_data = self._make_request(self.auth_url, data=payload, headers=headers)
 
-    def _is_valid(self, access_token: str) -> bool:
-        """Check if the access_token is still valid."""
-        exp = self._decode_access_token(access_token).get("exp", "")
-        return datetime.now(timezone.utc).replace(tzinfo=None) < datetime.fromtimestamp(
-            int(exp)
+        if self._stored:
+            self.save_token(token_data)
+
+        return token_data["access_token"]
+
+    def _load_token_from_storage(self):
+        """Attempt to load and validate the access token from storage.
+
+        Raises:
+            WizError: If the access token is not a valid JWT token or cannot be decoded.
+        """
+        if not self._stored:
+            raise WizError(
+                "Cannot load access token from storage as stored parameter is set to False"
+            )
+
+        access_token = self.load_token().get("access_token", "")
+        # JWT Token regex
+        m = re.match(
+            r"(eyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+=]+)", access_token
         )
+        if not m:
+            raise WizError("Invalid access token format. Expected a JWT token")
 
-    def _decode_access_token(self, access_token: str):
-        """Pad an OAuth access token, decode, and load into a dictionary"""
-        data = access_token.split(".")[1]
-        missing_padding = len(data) % 4
-        if missing_padding != 0:
-            data += "=" * (4 - missing_padding)
         try:
-            token_data = json.loads(base64.b64decode(data))
+            data = access_token.split(".")[1]
+            missing_padding = len(data) % 4
+            if missing_padding != 0:
+                data += "=" * (4 - missing_padding)
+                token_data = json.loads(base64.b64decode(data))
         except Exception as e:
             raise WizError(
                 f"Error parsing the Wiz API access token: {e}", raw=str(e)
             ) from e
-        return token_data
+
+        valid = datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ) < datetime.fromtimestamp(int(token_data.get("exp", 0)))
+
+        if not valid:
+            raise WizError("Stored access token has been expired")
+
+        return access_token
 
     @http_error_handler()
-    def _make_request(self, url: str, **kwargs) -> requests.Response:
+    def _make_request(self, url: str, **kwargs) -> Any:
         """Make an HTTP request and returns `Response`"""
         return requests.post(url, timeout=self.timeout, **kwargs)
 
 
-class Wiz(OAuthAccessToken):
+class WIZ:
     """Class for making API calls to the Wiz API."""
 
     def __init__(
@@ -365,15 +376,32 @@ class Wiz(OAuthAccessToken):
         client_secret: Optional[str] = None,
         api_url: Optional[str] = None,
         auth_url: Optional[str] = None,
-        timeout: int = 60,
+        timeout: int = DEFAULT_TIMEOUT,
         stored: bool = False,
     ) -> None:
 
-        super().__init__(client_id, client_secret, api_url, auth_url, timeout, stored)
+        self.config = Config(
+            options={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "api_url": api_url,
+                "auth_url": auth_url,
+                "timeout": timeout,
+            }
+        )
+
+        self.timeout = timeout or self.config.timeout
+
+        self._access_token = AccessToken(
+            self.config.client_id,
+            self.config.client_secret,
+            self.config.auth_url,
+            self.timeout,
+            stored=stored,
+        )
 
         self._session = requests.Session()
-        self._session.headers.update({"Content-Type": "application/json"})
-        self._set_auth_header()
+        self._session.headers["Content-Type"] = "application/json"
         self._data = {}
         self._has_next_page = False
         self._end_cursor = None
@@ -392,6 +420,7 @@ class Wiz(OAuthAccessToken):
 
         Reference: https://docs.wiz.io/wiz-docs/docs/using-the-wiz-api#communicating-with-graphql
         """
+        self._set_auth_header()
         self._data = {"variables": variables, "query": graph_query}
         result = self._post_with_session().json()
         return result
@@ -418,6 +447,7 @@ class Wiz(OAuthAccessToken):
         Reference: https://docs.wiz.io/wiz-docs/docs/using-the-wiz-api#communicating-with-graphql
         """
 
+        self._set_auth_header()
         self._data = {"variables": variables, "query": graph_query}
         result = self._post_with_session().json()
 
@@ -446,21 +476,17 @@ class Wiz(OAuthAccessToken):
         self._has_next_page = page_info.get("hasNextPage", False)
         self._end_cursor = page_info.get("endCursor", None)
 
-    def _set_auth_header(self, force: bool = False) -> None:
+    def _set_auth_header(self) -> None:
         """Update the access token."""
-        self._retrieve_accesstoken(force)
-        self._session.headers.update({"Authorization": f"Bearer {self._access_token}"})
+        if self._session.headers.get("Authorization", ""):
+            return
+        at = self._access_token.retrieve_accesstoken()
+        self._session.headers.update({"Authorization": f"Bearer {at}"})
 
     @http_error_handler()
     def _post_with_session(self, **kwargs) -> requests.Response:
         """Make an HTTP request and returns json data"""
         response = self._session.post(
-            self.api_url, timeout=self.timeout, json=self._data, **kwargs
+            self.config.api_url, timeout=self.config.timeout, json=self._data, **kwargs
         )
-        if response.status_code == 401:
-            self._set_auth_header(True)
-            response = self._session.post(
-                self.api_url, timeout=self.timeout, json=self._data, **kwargs
-            )
-
         return response
