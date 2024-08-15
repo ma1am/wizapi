@@ -49,7 +49,7 @@ class TestWiz2(TestWizBase):
         assert self.api._session.headers["Content-Type"] == "application/json"
 
     def test_set_auth_header(self):
-        with patch("wiz2.requests.post") as mock_post:
+        with patch("wiz.requests.post") as mock_post:
             mock_response = MagicMock()
             mock_response.json.return_value = {"access_token": "test_access_token"}
             mock_post.return_value = mock_response
@@ -59,7 +59,7 @@ class TestWiz2(TestWizBase):
             )
 
     def test_set_auth_header_force(self):
-        with patch("wiz2.requests.post") as mock_post:
+        with patch("wiz.requests.post") as mock_post:
             mock_response = MagicMock()
             mock_response.json.return_value = {"access_token": "new_test_access_token"}
             mock_post.return_value = mock_response
@@ -293,7 +293,7 @@ class TestAccessToken(TestWizBase):
             timeout=30,
             stored=True,
         )
-        with self.assertRaises(wiz2.WizError) as cm:
+        with self.assertRaises(wiz.WizError) as cm:
             at._load_token_from_storage()
         self.assertIn(
             "Invalid access token format. Expected a JWT token", str(cm.exception)
@@ -309,7 +309,7 @@ class TestAccessToken(TestWizBase):
             timeout=30,
             stored=True,
         )
-        with self.assertRaises(wiz2.WizError) as cm:
+        with self.assertRaises(wiz.WizError) as cm:
             at._load_token_from_storage()
         self.assertIn(
             "Invalid access token format. Expected a JWT token", str(cm.exception)
@@ -323,7 +323,7 @@ class TestAccessToken(TestWizBase):
             "https://wiz.io/token",
             timeout=30,
         )
-        with self.assertRaises(wiz2.WizError) as cm:
+        with self.assertRaises(wiz.WizError) as cm:
             at._load_token_from_storage()
         self.assertIn(
             "Cannot load access token from storage as stored parameter is set to False",
@@ -331,7 +331,7 @@ class TestAccessToken(TestWizBase):
         )
 
     def test_fetch_token(self):
-        with patch("wiz2.requests.post") as mock_post:
+        with patch("wiz.requests.post") as mock_post:
             mock_response = MagicMock()
             mock_response.json.return_value = {"access_token": "test_access_token"}
             mock_post.return_value = mock_response
