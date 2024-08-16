@@ -12,14 +12,15 @@ Class: WIZ
 The Wiz class is designed to interact with the Wiz API. It manages authentication via OAuth2 and supports making requests to the API.
 
 ```python
-from wizapi import WIZ
+from wizapi import Wiz
 
 # Initialize the API client
-w = WIZ(
+w = Wiz(
     client_id="your_client_id",
     client_secret="your_client_secret",
     api_url="https://api.myapp.com",
     auth_url="https://auth.myapp.com/token",
+    timeout=60
 )
 
 GRAPH_QUERY ="""..."""

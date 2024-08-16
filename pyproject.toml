@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wizapi"
-version = "0.1.0"
+version = "0.1.1"
 authors = [
   { name="alam", email="mailtoalam1@gmail.com"},
 ]
@@ -21,7 +21,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
-[tool.pytest.ini_options]
+[tool.pytest.wiztest]
 minversion = "6.0"
 addopts = "--strict-markers"
 testpaths = ["tests"]

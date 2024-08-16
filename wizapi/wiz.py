@@ -367,7 +367,7 @@ class AccessToken(TokenStorage):
         return requests.post(url, timeout=self.timeout, **kwargs)
 
 
-class WIZ:
+class Wiz:
     """Class for making API calls to the Wiz API."""
 
     def __init__(
@@ -422,7 +422,7 @@ class WIZ:
         """
         self._set_auth_header()
         self._data = {"variables": variables, "query": graph_query}
-        result = self._post_with_session().json()
+        result = self._post_with_session()
         return result
 
     def query_all(
@@ -449,7 +449,7 @@ class WIZ:
 
         self._set_auth_header()
         self._data = {"variables": variables, "query": graph_query}
-        result = self._post_with_session().json()
+        result = self._post_with_session()
 
         yield result
 
@@ -466,7 +466,7 @@ class WIZ:
         """Yields the paginated data"""
         while self._has_next_page:
             self._data["variables"]["after"] = self._end_cursor
-            result = self._post_with_session().json()
+            result = self._post_with_session()
             yield result
             self._set_pagination(result)
 
@@ -484,7 +484,7 @@ class WIZ:
         self._session.headers.update({"Authorization": f"Bearer {at}"})
 
     @http_error_handler()
-    def _post_with_session(self, **kwargs) -> requests.Response:
+    def _post_with_session(self, **kwargs) -> Any:
         """Make an HTTP request and returns json data"""
         response = self._session.post(
             self.config.api_url, timeout=self.config.timeout, json=self._data, **kwargs

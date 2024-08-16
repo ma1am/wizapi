@@ -7,6 +7,6 @@ Usage:
 
 """
 
-from .wiz import WIZ, WizError
+from .wiz import Wiz, WizError
 
-__all__ = ["WIZ", "WizError"]
+__all__ = ["Wiz", "WizError"]

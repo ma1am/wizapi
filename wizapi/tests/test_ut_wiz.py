@@ -4,9 +4,8 @@
 
 import unittest
 import logging
-from pathlib import Path
-from unittest.mock import patch, MagicMock, mock_open
-from wizapi import WIZ, WizError
+from unittest.mock import patch, MagicMock
+from wizapi import Wiz, WizError
 from wizapi import wiz
 
 
@@ -30,7 +29,7 @@ class TestWizBase(unittest.TestCase):
 
 class TestWiz2(TestWizBase):
     def setUp(self):
-        self.api = WIZ(
+        self.api = Wiz(
             client_id="test_client_id",
             client_secret="test_client_secret",
             api_url="https://wiz.io/graphql",
@@ -68,6 +67,14 @@ class TestWiz2(TestWizBase):
                 self.api._session.headers["Authorization"]
                 == "Bearer new_test_access_token"
             )
+
+    @patch.object(wiz.Wiz, "_set_auth_header", return_value=None)
+    @patch.object(
+        wiz.Wiz, "_post_with_session", return_value={"data": {"test": "data"}}
+    )
+    def test_query(self, mock_set_auth_header, mock_post_with_session):
+        result = self.api.query("graphquery", {"graph_variable": 1})
+        assert result == {"data": {"test": "data"}}
 
 
 class TestConfig(TestWizBase):

@@ -71,3 +71,5 @@ docs/_build
 # Vscode
 .vscode
 
+# dev files
+dev_*.py
