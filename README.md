@@ -49,5 +49,5 @@ w=Wiz(stored=True)
 
 
 ## Methods
-- `query()` : non-paginated query result (dict)
-- `query_all()`: paginated query result (dict)
+- `query()` : non-paginated query result (Dict)
+- `query_all()` : paginated query result (Generator)
